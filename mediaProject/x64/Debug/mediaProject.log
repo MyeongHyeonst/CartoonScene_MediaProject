@@ -1,0 +1,3 @@
+﻿  main.cpp
+C:\Users\김명현\Desktop\4-2\미프\mediaProject\mediaProject\main.cpp(74,22): warning C4101: 'bg' :참조되지 않은 지역 변수입니다.
+  mediaProject.vcxproj -> C:\Users\김명현\Desktop\4-2\미프\mediaProject\x64\Debug\mediaProject.exe
