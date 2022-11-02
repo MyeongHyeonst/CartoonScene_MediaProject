@@ -1,0 +1,7 @@
+/.vs
+/*.sln
+/*.xcodeproj
+
+*.exe
+*.sln
+*.pdb
