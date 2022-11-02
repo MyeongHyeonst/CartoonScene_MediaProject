@@ -58,7 +58,6 @@ const unsigned int SCR_HEIGHT = 600;
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
-bool firstMouse = true;
 
 // timing
 float deltaTime = 0.0f;
@@ -107,8 +106,9 @@ int main()
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
+
     // tell GLFW to capture our mouse
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
     // glad: load all OpenGL function pointers
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -124,8 +124,8 @@ int main()
     Shader ourShader("model.vert", "model.frag");
 
     // load models
-    Model ourModel("C:/model/backpack/backpack.obj");
-    //Model ourModel("C:/model/stanford-bunny.obj");
+    //Model ourModel("C:/model/backpack/backpack.obj");
+    Model ourModel("C:/model/stanford-bunny.obj");
     //Model ourModel("C:/model/chicken/scene.gltf");
 
     glfwMakeContextCurrent(UI);
@@ -162,18 +162,13 @@ int main()
 
 
         glfwMakeContextCurrent(window);
-        // per-frame time logic
-        // --------------------
+
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // input
-        // -----
         processInput(window);
 
-        // render
-        // ------
         glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -192,19 +187,15 @@ int main()
 
         // render the loaded model
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); // translate it down so it's at the center of the scene
-        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));	// it's a bit too big for our scene, so scale it down
+        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); 
+        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));	
         ourShader.setMat4("model", model);
         ourModel.Draw(ourShader);
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     nk_glfw3_shutdown(&glfw);
-    // glfw: terminate, clearing all previously allocated GLFW resources.
-    // ------------------------------------------------------------------
     glfwTerminate();
     return 0;
 }
@@ -246,11 +237,10 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     float xpos = static_cast<float>(xposIn);
     float ypos = static_cast<float>(yposIn);
 
-    if (firstMouse)
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE)
     {
         lastX = xpos;
         lastY = ypos;
-        firstMouse = false;
     }
 
     float xoffset = xpos - lastX;
