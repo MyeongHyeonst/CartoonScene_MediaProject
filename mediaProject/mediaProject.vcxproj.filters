@@ -21,6 +21,9 @@
     <ClCompile Include="glad.c">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="test.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="shader.h">
@@ -35,12 +38,24 @@
     <ClInclude Include="mesh.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="texture.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="framebuffer.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="model.vert">
       <Filter>소스 파일</Filter>
     </None>
     <None Include="model.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="draw.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="draw.vert">
       <Filter>소스 파일</Filter>
     </None>
   </ItemGroup>
