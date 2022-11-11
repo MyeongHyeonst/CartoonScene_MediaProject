@@ -26,6 +26,9 @@
 #include "shader.h"
 #include "camera.h"
 #include "model.h"
+#include "framebuffer.h"
+
+#define GLEW_STATIC
 
 // nuklear flag
 #define NK_INCLUDE_FIXED_TYPES
@@ -49,10 +52,17 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
+void renderUI();
+void renderOBJ();
+void drawWindow();
+void init();
 
 // settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+ unsigned int SCR_WIDTH = 800;
+ unsigned int SCR_HEIGHT = 600;
+
+const unsigned int UI_WIDTH = 200;
+const unsigned int UI_HEIGHT = 600;
 
 // camera
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
@@ -66,21 +76,20 @@ float lastFrame = 0.0f;
 // lighting
 glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
 
+// nuklear setting
+struct nk_glfw glfw = { 0 };
+struct nk_context* ctx;
+struct nk_colorf bg;
+
+Shader ourShader, drawShader;
+Model ourModel;
+
+Framebuffer buffer0, buffer1;
+GLuint vao, vbo, ebo;
 int main()
 {
-    // nuklear setting
-    struct nk_glfw glfw = { 0 };
-    struct nk_context* ctx;
-    struct nk_colorf bg;
-
     // glfw: initialize and configure
-    if (!glfwInit())
-    {
-        // Initialization failed
-        cout << "Initialization Failed!!" << endl;
-
-        return -1;
-    }
+    glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -93,7 +102,7 @@ int main()
         glfwTerminate();
         return -1;
     }
-    GLFWwindow* UI = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "UI", NULL, NULL);
+    GLFWwindow* UI = glfwCreateWindow(UI_WIDTH, UI_HEIGHT, "UI", NULL, NULL);
     if (UI == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -105,11 +114,7 @@ int main()
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
-
-
-    // tell GLFW to capture our mouse
-    //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-
+    
     // glad: load all OpenGL function pointers
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
@@ -117,20 +122,16 @@ int main()
         return -1;
     }
 
-    // configure global opengl state
-    glEnable(GL_DEPTH_TEST);
-
-    // build and compile shaders
-    Shader ourShader("model.vert", "model.frag");
+    init();
 
     // load models
-    //Model ourModel("C:/model/backpack/backpack.obj");
-    Model ourModel("C:/model/stanford-bunny.obj");
-    //Model ourModel("C:/model/chicken/scene.gltf");
+     //ourModel.Load("C:/model/backpack/backpack.obj");
+      ourModel.Load("C:/model/stanford-bunny.obj");
+    // ourModel.Load("C:/model/chicken/scene.gltf");
 
-    glfwMakeContextCurrent(UI);
-
+      
     // nuklear //
+    glfwMakeContextCurrent(UI);
     ctx = nk_glfw3_init(&glfw, UI, NK_GLFW3_DEFAULT);
     // Font
     struct nk_font_atlas* atlas;
@@ -142,62 +143,129 @@ int main()
     while (!glfwWindowShouldClose(window))
     {
         glfwMakeContextCurrent(UI);
-        // NuKlear GUI 
-        nk_glfw3_new_frame(&glfw);
-
-        if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
-            NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE |
-            NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE))
-        {
-            // ... 
-            // 여기에 UI 내용을 구현할 것임!
-            // ...
-        }
-        nk_end(ctx);
-
-        nk_glfw3_render(&glfw, NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
-
+        renderUI();
         glfwSwapBuffers(UI);
-
-
-
+        
         glfwMakeContextCurrent(window);
-
-        float currentFrame = static_cast<float>(glfwGetTime());
-        deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
-
         processInput(window);
 
-        glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        // don't forget to enable shader before setting uniforms
-        ourShader.use();
-        ourShader.setVec3("objectColor", 1.0f, 0.5f, 0.31f);
-        ourShader.setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-        ourShader.setVec3("lightPos", lightPos);
-        ourShader.setVec3("viewPos", camera.Position);
-
-        // view/projection transformations
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.GetViewMatrix();
-        ourShader.setMat4("projection", projection);
-        ourShader.setMat4("view", view);
-
-        // render the loaded model
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); 
-        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));	
-        ourShader.setMat4("model", model);
-        ourModel.Draw(ourShader);
-
+        renderOBJ();
+        drawWindow();
+        
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     nk_glfw3_shutdown(&glfw);
     glfwTerminate();
     return 0;
+}
+
+void renderUI()
+{
+    // NuKlear GUI 
+    nk_glfw3_new_frame(&glfw);
+
+    if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
+        NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE |
+        NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE))
+    {
+
+    }
+    nk_end(ctx);
+
+    nk_glfw3_render(&glfw, NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
+}
+
+void renderOBJ()
+{
+    float currentFrame = static_cast<float>(glfwGetTime());
+    deltaTime = currentFrame - lastFrame;
+    lastFrame = currentFrame;
+    
+    buffer0.bindBuffer();
+    //glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glEnable(GL_DEPTH_TEST);
+
+    glClearColor(1.0f, 0.05f, 0.05f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // model rendering
+    ourShader.use();
+    ourShader.setVec3("objectColor", 1.0f, 0.5f, 0.31f);
+    ourShader.setVec3("lightColor", 1.0f, 1.0f, 1.0f);
+    ourShader.setVec3("lightPos", lightPos);
+    ourShader.setVec3("viewPos", camera.Position);
+
+    // view/projection transformations
+    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera.GetViewMatrix();
+    ourShader.setMat4("projection", projection);
+    ourShader.setMat4("view", view);
+
+    // render the loaded model
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+    model = glm::scale(model, glm::vec3(3.0f, 3.0f, 3.0f));
+    ourShader.setMat4("model", model);
+    ourModel.Draw(ourShader);
+}
+
+// Pass-2 Just draw
+void drawWindow()
+{
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    drawShader.use();
+    buffer0.bind();
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+}
+
+void init()
+{
+    ourShader.loadShaders("model.vert", "model.frag");
+    drawShader.loadShaders("draw.vert", "draw.frag");
+
+    float vertices[] = {
+        1.0f,  1.0f, 0.0f, 1.0f, 1.0f,   // top right
+        1.0f, -1.0f, 0.0f, 1.0f, 0.0f,   // bottom right
+       -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,   // bottom left
+       -1.0f,  1.0f, 0.0f, 0.0f, 1.0f    // top left 
+    };
+
+    unsigned int indices[] = {
+          0, 3, 2,
+          0, 2, 1
+    };
+
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &vbo);
+    glGenBuffers(1, &ebo);
+
+    glBindVertexArray(vao);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    //position
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    //texture
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+
+    buffer0.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+    //buffer1.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
@@ -225,9 +293,12 @@ void processInput(GLFWwindow* window)
 // ---------------------------------------------------------------------------------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
-    // make sure the viewport matches the new window dimensions; note that width and 
-    // height will be significantly larger than specified on retina displays.
     glViewport(0, 0, width, height);
+    
+    SCR_WIDTH = width;
+    SCR_HEIGHT = height;
+    
+    buffer0.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
 }
 
 // glfw: whenever the mouse moves, this callback is called
