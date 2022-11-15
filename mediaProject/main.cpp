@@ -1,4 +1,3 @@
-#define STB_IMAGE_IMPLEMENTATION
 #define _CRT_SECURE_NO_WARNINGS
 
 /* nuklear - 1.32.0 - public domain */
@@ -13,7 +12,7 @@
 #include <limits.h>
 #include <time.h>
 
-#include <glad/glad.h>
+#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
 #include <glm/glm.hpp>
@@ -44,7 +43,6 @@
 
 #include <Nuklear/nuklear.h>
 #include <Nuklear/nuklear_glfw_gl3.h>
-
 #define MAX_VERTEX_BUFFER 512 * 1024
 #define MAX_ELEMENT_BUFFER 128 * 1024
 
@@ -58,8 +56,8 @@ void drawWindow();
 void init();
 
 // settings
- unsigned int SCR_WIDTH = 800;
- unsigned int SCR_HEIGHT = 600;
+unsigned int SCR_WIDTH = 800;
+unsigned int SCR_HEIGHT = 600;
 
 const unsigned int UI_WIDTH = 200;
 const unsigned int UI_HEIGHT = 600;
@@ -68,7 +66,7 @@ const unsigned int UI_HEIGHT = 600;
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
-
+float step = 1;
 // timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -86,6 +84,7 @@ Model ourModel;
 
 Framebuffer buffer0, buffer1;
 GLuint vao, vbo, ebo;
+
 int main()
 {
     // glfw: initialize and configure
@@ -114,22 +113,26 @@ int main()
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
-    
-    // glad: load all OpenGL function pointers
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+
+    //glew init
+    glewExperimental = GL_TRUE;
+    GLenum errorCode = glewInit();
+    if (GLEW_OK != errorCode)
     {
-        std::cout << "Failed to initialize GLAD" << std::endl;
+        cerr << "Error : GLEW Init Fail" << glewGetErrorString(errorCode) << endl;
+
+        glfwTerminate();
         return -1;
     }
 
     init();
 
     // load models
-     //ourModel.Load("C:/model/backpack/backpack.obj");
-      ourModel.Load("C:/model/stanford-bunny.obj");
+    //ourModel.Load("C:/model/backpack/backpack.obj");
+    ourModel.Load("C:/model/stanford-bunny.obj");
     // ourModel.Load("C:/model/chicken/scene.gltf");
 
-      
+
     // nuklear //
     glfwMakeContextCurrent(UI);
     ctx = nk_glfw3_init(&glfw, UI, NK_GLFW3_DEFAULT);
@@ -145,17 +148,19 @@ int main()
         glfwMakeContextCurrent(UI);
         renderUI();
         glfwSwapBuffers(UI);
-        
+
         glfwMakeContextCurrent(window);
         processInput(window);
 
         renderOBJ();
         drawWindow();
-        
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     nk_glfw3_shutdown(&glfw);
+    buffer0.deleteFramebuffer();
+
     glfwTerminate();
     return 0;
 }
@@ -181,12 +186,11 @@ void renderOBJ()
     float currentFrame = static_cast<float>(glfwGetTime());
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
-    
+
     buffer0.bindBuffer();
-    //glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glEnable(GL_DEPTH_TEST);
 
-    glClearColor(1.0f, 0.05f, 0.05f, 1.0f);
+    glClearColor(1.0f, 0.5f, 0.5f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // model rendering
@@ -205,7 +209,8 @@ void renderOBJ()
     // render the loaded model
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
-    model = glm::scale(model, glm::vec3(3.0f, 3.0f, 3.0f));
+    //model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0, 1.0, 0.0));
+    model = glm::scale(model, (glm::vec3(1.0f, 1.0f, 1.0f)));// *glm::vec3(3)));
     ourShader.setMat4("model", model);
     ourModel.Draw(ourShader);
 }
@@ -213,14 +218,13 @@ void renderOBJ()
 // Pass-2 Just draw
 void drawWindow()
 {
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(0.5f, 1.0f, 0.5f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     drawShader.use();
+    glBindVertexArray(vao);
     buffer0.bind();
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
@@ -239,8 +243,8 @@ void init()
     };
 
     unsigned int indices[] = {
-          0, 3, 2,
-          0, 2, 1
+          3, 2, 1,
+          3, 1, 0
     };
 
     glGenVertexArrays(1, &vao);
@@ -263,9 +267,10 @@ void init()
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
+    buffer0.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
 
-    buffer0.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
     //buffer1.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
@@ -287,6 +292,11 @@ void processInput(GLFWwindow* window)
         camera.ProcessKeyboard(UP, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
         camera.ProcessKeyboard(DOWN, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS)
+    {
+        step *= -1;
+        cout << step << endl;
+    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -294,11 +304,11 @@ void processInput(GLFWwindow* window)
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
     glViewport(0, 0, width, height);
-    
+
     SCR_WIDTH = width;
     SCR_HEIGHT = height;
-    
-    buffer0.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+
+    buffer0.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
 }
 
 // glfw: whenever the mouse moves, this callback is called
