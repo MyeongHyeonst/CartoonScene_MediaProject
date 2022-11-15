@@ -149,10 +149,19 @@
     <ClCompile Include="stb_image.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="colorLine.frag" />
+    <None Include="DoG.frag" />
     <None Include="draw.frag" />
     <None Include="draw.vert" />
+    <None Include="drawETF.frag" />
+    <None Include="ETF.frag" />
+    <None Include="etf0.frag" />
+    <None Include="gaussian.frag" />
+    <None Include="gradientMagnitude.frag" />
     <None Include="model.frag" />
     <None Include="model.vert" />
+    <None Include="sobel.frag" />
+    <None Include="sobely.frag" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\camera.h" />

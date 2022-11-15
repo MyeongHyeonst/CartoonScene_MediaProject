@@ -35,6 +35,33 @@
     <None Include="draw.vert">
       <Filter>소스 파일</Filter>
     </None>
+    <None Include="colorLine.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="DoG.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="drawETF.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="ETF.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="etf0.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="gaussian.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="gradientMagnitude.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="sobel.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="sobely.frag">
+      <Filter>소스 파일</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\camera.h">

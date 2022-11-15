@@ -53,6 +53,8 @@ void processInput(GLFWwindow* window);
 void renderUI();
 void renderOBJ();
 void drawWindow();
+void applyGaussian(int order);
+void applySobel(int order);
 void init();
 
 // settings
@@ -79,11 +81,14 @@ struct nk_glfw glfw = { 0 };
 struct nk_context* ctx;
 struct nk_colorf bg;
 
-Shader ourShader, drawShader;
+Shader ourShader, drawShader, gaussianProgram, sobelProgram;
 Model ourModel;
 
-Framebuffer buffer0, buffer1;
+Framebuffer switchBuffer0, switchBuffer1, sobelBufferX, sobelBufferY;
 GLuint vao, vbo, ebo;
+
+
+float sigma = 0.2f;
 
 int main()
 {
@@ -153,13 +158,19 @@ int main()
         processInput(window);
 
         renderOBJ();
+        applyGaussian(0);
+        applyGaussian(1);
+
+        applySobel(0);
+        applySobel(1);
+
         drawWindow();
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     nk_glfw3_shutdown(&glfw);
-    buffer0.deleteFramebuffer();
+    switchBuffer0.deleteFramebuffer();
 
     glfwTerminate();
     return 0;
@@ -170,11 +181,16 @@ void renderUI()
     // NuKlear GUI 
     nk_glfw3_new_frame(&glfw);
 
-    if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
+    if (nk_begin(ctx, "UI", nk_rect(30, 30, UI_WIDTH-30, UI_HEIGHT/3.f),
         NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE |
         NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE))
     {
+        // Contents
+        static const float ratio[] = { 100, 100 };
+        nk_layout_row(ctx, NK_STATIC, 25, 2, ratio);
 
+        nk_labelf(ctx, NK_TEXT_LEFT, "sigma = %.1f", sigma);
+        nk_slider_float(ctx, 0.0f, &sigma, 1.0f, 0.01f);
     }
     nk_end(ctx);
 
@@ -187,7 +203,7 @@ void renderOBJ()
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    buffer0.bindBuffer();
+    switchBuffer0.bindBuffer();
     glEnable(GL_DEPTH_TEST);
 
     glClearColor(1.0f, 0.5f, 0.5f, 1.0f);
@@ -214,18 +230,60 @@ void renderOBJ()
     ourShader.setMat4("model", model);
     ourModel.Draw(ourShader);
 }
+void applyGaussian(int order)
+{
+    if (order == 0) switchBuffer1.bindBuffer();
+    else switchBuffer0.bindBuffer();
 
-// Pass-2 Just draw
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    gaussianProgram.use();
+    glBindVertexArray(vao);
+
+    if (order == 0) switchBuffer0.bind();
+    else switchBuffer1.bind();
+
+    gaussianProgram.setInt("len", SCR_WIDTH);
+    gaussianProgram.setInt("order", order);
+    gaussianProgram.setFloat("sigma", sigma);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+}
+void applySobel(int order)
+{
+    if (order == 0) sobelBufferX.bindBuffer();
+    else sobelBufferY.bindBuffer();
+
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    sobelProgram.use();
+    glBindVertexArray(vao);
+
+    switchBuffer1.bind();
+
+    sobelProgram.setInt("width", SCR_WIDTH);
+    sobelProgram.setInt("height", SCR_HEIGHT);
+    sobelProgram.setInt("order", order);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+}
+
+
+
 void drawWindow()
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glDisable(GL_DEPTH_TEST);
+    
     glClearColor(0.5f, 1.0f, 0.5f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     drawShader.use();
     glBindVertexArray(vao);
-    buffer0.bind();
+    sobelBufferY.bind();
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
@@ -234,6 +292,8 @@ void init()
 {
     ourShader.loadShaders("model.vert", "model.frag");
     drawShader.loadShaders("draw.vert", "draw.frag");
+    gaussianProgram.loadShaders("draw.vert", "gaussian.frag");
+    sobelProgram.loadShaders("draw.vert", "sobel.frag");
 
     float vertices[] = {
         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,   // top right
@@ -267,9 +327,10 @@ void init()
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    buffer0.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
-
-    //buffer1.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+    switchBuffer0.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
+    switchBuffer1.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+    sobelBufferX.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+    sobelBufferY.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
 
 }
 
@@ -308,7 +369,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     SCR_WIDTH = width;
     SCR_HEIGHT = height;
 
-    buffer0.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
+    switchBuffer0.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
 }
 
 // glfw: whenever the mouse moves, this callback is called
