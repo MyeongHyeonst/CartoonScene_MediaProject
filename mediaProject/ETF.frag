@@ -45,6 +45,6 @@ void main(void)
 	float len = sqrt(wx * wx + wy * wy);
 	if (len == 0) len = 1;
 
-	FragColor = vec4(wx/len, wy/len, 0, 0);
+	FragColor = vec4(wx/len, wy/len, 0, 1.0);
 }
 

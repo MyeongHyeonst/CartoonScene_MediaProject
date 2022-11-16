@@ -250,8 +250,6 @@ void applyXDOG(Framebuffer edgeB, Framebuffer etf0B, Framebuffer dogB, float sig
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
 
-
-
 };
 
 

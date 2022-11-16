@@ -44,6 +44,6 @@ void main(void)
 						   *intensity(texture(source, next));
 	}
 
-	FragColor = vec4(nsum_t, nsum_t, nsum_t, 0);
+	FragColor = vec4(nsum_t, nsum_t, nsum_t, 1.0);
 }
 

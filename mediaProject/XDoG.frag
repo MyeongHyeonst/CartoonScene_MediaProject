@@ -42,8 +42,8 @@ void main(void)
 	float t = nsum_s.x/sum_s;
 
 	if (t >= epsilon)
-		FragColor = vec4(1, 1, 1, 0);
+		FragColor = vec4(1, 1, 1, 1.0);
 	else
-		FragColor = vec4(1 + 100 * atan(phi * (t - epsilon)), 1 + 100 * atan(phi * (t - epsilon)), 1 + 100 * atan(phi * (t - epsilon)), 0); 
+		FragColor = vec4(1 + 100 * atan(phi * (t - epsilon)), 1 + 100 * atan(phi * (t - epsilon)), 1 + 100 * atan(phi * (t - epsilon)), 1.0); 
 }
 

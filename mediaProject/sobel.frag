@@ -34,5 +34,5 @@ void main(void)
 				+ (-2) * intensity(texture(ourTexture, vec2(TexCoord.x, TexCoord.y+dy)))
 				+ (-1) * intensity(texture(ourTexture, vec2(TexCoord.x+dx, TexCoord.y+dy)));	
 	
-	FragColor = vec4(color, color, color, 0);
+	FragColor = vec4(color, color, color, 1.0);
 }

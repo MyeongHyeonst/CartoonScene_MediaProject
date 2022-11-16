@@ -35,9 +35,6 @@
     <None Include="draw.vert">
       <Filter>소스 파일</Filter>
     </None>
-    <None Include="colorLine.frag">
-      <Filter>소스 파일</Filter>
-    </None>
     <None Include="DoG.frag">
       <Filter>소스 파일</Filter>
     </None>
@@ -59,10 +56,10 @@
     <None Include="sobel.frag">
       <Filter>소스 파일</Filter>
     </None>
-    <None Include="sobely.frag">
+    <None Include="XDoG.frag">
       <Filter>소스 파일</Filter>
     </None>
-    <None Include="XDoG.frag">
+    <None Include="drawEdge.frag">
       <Filter>소스 파일</Filter>
     </None>
   </ItemGroup>

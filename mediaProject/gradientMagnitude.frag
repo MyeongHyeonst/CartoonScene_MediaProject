@@ -15,5 +15,5 @@ float intensity(vec4 color)
 void main(void)
 {
 	float color = sqrt(pow(intensity(texture(sobelx, TexCoord)), 2) + pow(intensity(texture(sobely, TexCoord)), 2));
-	FragColor = vec4(color, color, color, 0);
+	FragColor = vec4(color, color, color, 1.0);
 }

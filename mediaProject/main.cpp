@@ -54,7 +54,7 @@ void processInput(GLFWwindow* window);
 
 void renderUI();
 void renderOBJ(Framebuffer f);
-void drawWindow();
+void drawWindow(Framebuffer edgeB);
 
 void init();
 
@@ -82,7 +82,7 @@ struct nk_glfw glfw = { 0 };
 struct nk_context* ctx;
 struct nk_colorf bg;
 
-Shader ourShader, drawShader;
+Shader ourShader, drawEdgeShader, drawColorShader;
 Model ourModel;
 
 Framebuffer originalBuffer, switchBuffer, switchBuffer2, sobelBufferX, sobelBufferY, gmBuffer, etf0Buffer, dogBuffer, edgeBuffer;
@@ -105,8 +105,8 @@ int main()
     init();
 
     // load models
-    //ourModel.Load("C:/model/backpack/backpack.obj");
-    ourModel.Load("C:/model/stanford-bunny.obj");
+    ourModel.Load("C:/model/backpack/backpack.obj");
+    //ourModel.Load("C:/model/stanford-bunny.obj");
     // ourModel.Load("C:/model/chicken/scene.gltf");
 
 
@@ -135,16 +135,16 @@ int main()
 
         xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 0);
         xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 1);
-
+        
         xdog.calculateGM(gmBuffer, sobelBufferX, sobelBufferY);
-
+        
         xdog.calculateETF0(etf0Buffer, gmBuffer, sobelBufferX, sobelBufferY);
         xdog.calculateETF(switchBuffer, etf0Buffer, gmBuffer, etf);
-
+        
         xdog.applyDOG(dogBuffer, etf0Buffer, originalBuffer, sigma_c, k, p);
         xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
 
-        drawWindow();
+        drawWindow(edgeBuffer);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -197,7 +197,6 @@ void renderUI()
 
     nk_glfw3_render(&glfw, NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
 }
-
 void renderOBJ(Framebuffer f)
 {
     float currentFrame = static_cast<float>(glfwGetTime());
@@ -227,25 +226,30 @@ void renderOBJ(Framebuffer f)
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
     //model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0, 1.0, 0.0));
-    model = glm::scale(model, (glm::vec3(1.0f, 1.0f, 1.0f) *glm::vec3(3)));
+    model = glm::scale(model, (glm::vec3(1.0f, 1.0f, 1.0f))); //*glm::vec3(3)));
     ourShader.setMat4("model", model);
     ourModel.Draw(ourShader);
 }
-
-void drawWindow()
+void drawWindow(Framebuffer edgeB)
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
     glClearColor(0.5f, 1.0f, 0.5f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    drawShader.use();
+    drawColorShader.use();
     glBindVertexArray(vao);
-    edgeBuffer.bind();
+    originalBuffer.bind();
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    drawEdgeShader.use();
+    glBindVertexArray(vao);
+    edgeB.bind();
+
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
-
 void init()
 {
     // glfw: initialize and configure
@@ -283,8 +287,14 @@ void init()
         glfwTerminate();
     }
 
+    // For blend
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     ourShader.loadShaders("model.vert", "model.frag");
-    drawShader.loadShaders("draw.vert", "draw.frag");
+    drawColorShader.loadShaders("draw.vert", "draw.frag");
+    drawEdgeShader.loadShaders("draw.vert", "drawEdge.frag");
  
     float vertices[] = {
         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,   // top right
