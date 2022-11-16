@@ -26,6 +26,7 @@
 #include "camera.h"
 #include "model.h"
 #include "framebuffer.h"
+#include "XDOG.h"
 
 #define GLEW_STATIC
 
@@ -50,16 +51,11 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
+
 void renderUI();
-void renderOBJ();
+void renderOBJ(Framebuffer f);
 void drawWindow();
-void applyGaussian(int order);
-void applySobel(int order);
-void calculateGM();
-void calculateETF0();
-void calculateETF();
-void applyDOG();
-void applyXDOG();
+
 void init();
 
 // settings
@@ -86,7 +82,7 @@ struct nk_glfw glfw = { 0 };
 struct nk_context* ctx;
 struct nk_colorf bg;
 
-Shader ourShader, drawShader, gaussianProgram, sobelProgram, gmProgram, etf0Program, etfProgram, dogProgram, xdogProgram;
+Shader ourShader, drawShader;
 Model ourModel;
 
 Framebuffer originalBuffer, switchBuffer, switchBuffer2, sobelBufferX, sobelBufferY, gmBuffer, etf0Buffer, dogBuffer, edgeBuffer;
@@ -100,52 +96,17 @@ float k = 1.4f;
 float p = 39.f;
 float ep = 0.6f;
 float phi = 0.016f;
-
+float etf = 7;
+XDOG xdog;
+GLFWwindow *window, *UI;
 int main()
 {
-    // glfw: initialize and configure
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    // glfw window creation
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Viewer", NULL, NULL);
-    if (window == NULL)
-    {
-        std::cout << "Failed to create GLFW window" << std::endl;
-        glfwTerminate();
-        return -1;
-    }
-    GLFWwindow* UI = glfwCreateWindow(UI_WIDTH, UI_HEIGHT, "UI", NULL, NULL);
-    if (UI == NULL)
-    {
-        std::cout << "Failed to create GLFW window" << std::endl;
-        glfwTerminate();
-        return -1;
-    }
-
-    glfwMakeContextCurrent(window);
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-    glfwSetCursorPosCallback(window, mouse_callback);
-    glfwSetScrollCallback(window, scroll_callback);
-
-    //glew init
-    glewExperimental = GL_TRUE;
-    GLenum errorCode = glewInit();
-    if (GLEW_OK != errorCode)
-    {
-        cerr << "Error : GLEW Init Fail" << glewGetErrorString(errorCode) << endl;
-
-        glfwTerminate();
-        return -1;
-    }
-
+    
     init();
 
     // load models
-    ourModel.Load("C:/model/backpack/backpack.obj");
-    //ourModel.Load("C:/model/stanford-bunny.obj");
+    //ourModel.Load("C:/model/backpack/backpack.obj");
+    ourModel.Load("C:/model/stanford-bunny.obj");
     // ourModel.Load("C:/model/chicken/scene.gltf");
 
 
@@ -168,20 +129,20 @@ int main()
         glfwMakeContextCurrent(window);
         processInput(window);
 
-        renderOBJ();
-        applyGaussian(0);
-        applyGaussian(1);
+        renderOBJ(originalBuffer);
+        xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
+        xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
 
-        applySobel(0);
-        applySobel(1);
+        xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 0);
+        xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 1);
 
-        calculateGM();
+        xdog.calculateGM(gmBuffer, sobelBufferX, sobelBufferY);
 
-        calculateETF0();
-        calculateETF();
+        xdog.calculateETF0(etf0Buffer, gmBuffer, sobelBufferX, sobelBufferY);
+        xdog.calculateETF(switchBuffer, etf0Buffer, gmBuffer, etf);
 
-        applyDOG();
-        applyXDOG();
+        xdog.applyDOG(dogBuffer, etf0Buffer, originalBuffer, sigma_c, k, p);
+        xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
 
         drawWindow();
 
@@ -194,7 +155,7 @@ int main()
     glfwTerminate();
     return 0;
 }
-float etf = 7;
+
 void renderUI()
 {
     // NuKlear GUI 
@@ -237,13 +198,13 @@ void renderUI()
     nk_glfw3_render(&glfw, NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
 }
 
-void renderOBJ()
+void renderOBJ(Framebuffer f)
 {
     float currentFrame = static_cast<float>(glfwGetTime());
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    originalBuffer.bindBuffer();
+    f.bindBuffer();
     glEnable(GL_DEPTH_TEST);
 
     glClearColor(1.0f, 0.5f, 0.5f, 1.0f);
@@ -266,189 +227,11 @@ void renderOBJ()
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
     //model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0, 1.0, 0.0));
-    model = glm::scale(model, (glm::vec3(1.0f, 1.0f, 1.0f)));// *glm::vec3(3)));
+    model = glm::scale(model, (glm::vec3(1.0f, 1.0f, 1.0f) *glm::vec3(3)));
     ourShader.setMat4("model", model);
     ourModel.Draw(ourShader);
 }
-void applyGaussian(int order)
-{
-    if (order == 0) switchBuffer.bindBuffer();
-    else switchBuffer2.bindBuffer();
 
-    glDisable(GL_DEPTH_TEST);
-    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    gaussianProgram.use();
-    glBindVertexArray(vao);
-
-    if (order == 0) originalBuffer.bind();
-    else switchBuffer.bind();
-
-    gaussianProgram.setInt("len", SCR_WIDTH);
-    gaussianProgram.setInt("order", order);
-    gaussianProgram.setFloat("sigma", sigma);
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-}
-void applySobel(int order)
-{
-    if (order == 0) sobelBufferX.bindBuffer();
-    else sobelBufferY.bindBuffer();
-
-    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    sobelProgram.use();
-    glBindVertexArray(vao);
-
-    switchBuffer2.bind();
-
-    sobelProgram.setInt("width", SCR_WIDTH);
-    sobelProgram.setInt("height", SCR_HEIGHT);
-    sobelProgram.setInt("order", order);
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-}
-// gradient magnitude 
-void calculateGM()
-{
-    gmBuffer.bindBuffer();
-    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    gmProgram.use();
-    glBindVertexArray(vao);
-
-    glActiveTexture(GL_TEXTURE0 + 1);
-    sobelBufferX.bind();
-    gmProgram.setInt("sobelx", 1);
-
-    glActiveTexture(GL_TEXTURE0);
-    sobelBufferY.bind();
-    gmProgram.setInt("sobely", 0);
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-}
-void calculateETF0()
-{
-    etf0Buffer.bindBuffer();
-    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    etf0Program.use();
-    glBindVertexArray(vao);
-
-    glActiveTexture(GL_TEXTURE0 + 2);
-    gmBuffer.bind();
-    etf0Program.setInt("magnitude", 2);
-
-    glActiveTexture(GL_TEXTURE0 + 1);
-    sobelBufferX.bind();
-    etf0Program.setInt("sobelx", 1);
-
-    glActiveTexture(GL_TEXTURE0);
-    sobelBufferY.bind();
-    etf0Program.setInt("sobely", 0);
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-}
-void calculateETF()
-{
-    for (int i = 0; i <etf; i++)
-    {
-        if (i % 2 == 0)
-        {
-            switchBuffer.bindBuffer();
-            glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-
-            etfProgram.use();
-            glBindVertexArray(vao);
-
-            glActiveTexture(GL_TEXTURE0 + 1);
-            etf0Buffer.bind();
-            etfProgram.setInt("ETF", 1);
-
-            glActiveTexture(GL_TEXTURE0);
-            gmBuffer.bind();
-            etfProgram.setInt("magnitude", 0);
-
-            etfProgram.setInt("width", SCR_WIDTH);
-
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        }
-        else
-        {
-            etf0Buffer.bindBuffer();
-            glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-
-            etfProgram.use();
-            glBindVertexArray(vao);
-
-            glActiveTexture(GL_TEXTURE0 + 1);
-            switchBuffer.bind();
-            etfProgram.setInt("ETF", 1);
-
-            glActiveTexture(GL_TEXTURE0);
-            gmBuffer.bind();
-            etfProgram.setInt("magnitude", 0);
-
-            etfProgram.setInt("width", SCR_WIDTH);
-
-            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        }  
-    }
-}
-void applyDOG()
-{
-    dogBuffer.bindBuffer();
-    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    dogProgram.use();
-    glBindVertexArray(vao);
-
-    glActiveTexture(GL_TEXTURE0 + 1);
-    etf0Buffer.bind();
-    dogProgram.setInt("ETF", 1);
-
-    glActiveTexture(GL_TEXTURE0);
-    originalBuffer.bind();
-    dogProgram.setInt("source", 0);
-
-    dogProgram.setInt("width", SCR_WIDTH);
-    dogProgram.setFloat("sigma_c", sigma_c);
-    dogProgram.setFloat("k", k);
-    dogProgram.setFloat("p", p);
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-}
-void applyXDOG()
-{
-    edgeBuffer.bindBuffer();
-    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    xdogProgram.use();
-    glBindVertexArray(vao);
-
-    glActiveTexture(GL_TEXTURE0 + 1);
-    etf0Buffer.bind();
-    xdogProgram.setInt("ETF", 1);
-
-    glActiveTexture(GL_TEXTURE0);
-    dogBuffer.bind();
-    xdogProgram.setInt("dog", 0);
-
-    xdogProgram.setInt("width", SCR_WIDTH);
-    xdogProgram.setFloat("sigma_m", sigma_m);
-    xdogProgram.setFloat("epsilon", ep);
-    xdogProgram.setFloat("phi", phi);
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-}
 void drawWindow()
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -465,16 +248,44 @@ void drawWindow()
 
 void init()
 {
+    // glfw: initialize and configure
+    glfwInit();
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    // glfw window creation
+    window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Viewer", NULL, NULL);
+    if (window == NULL)
+    {
+        std::cout << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+    }
+    UI = glfwCreateWindow(UI_WIDTH, UI_HEIGHT, "UI", NULL, NULL);
+    if (UI == NULL)
+    {
+        std::cout << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+    }
+
+    glfwMakeContextCurrent(window);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetScrollCallback(window, scroll_callback);
+
+    //glew init
+    glewExperimental = GL_TRUE;
+    GLenum errorCode = glewInit();
+    if (GLEW_OK != errorCode)
+    {
+        cerr << "Error : GLEW Init Fail" << glewGetErrorString(errorCode) << endl;
+
+        glfwTerminate();
+    }
+
     ourShader.loadShaders("model.vert", "model.frag");
     drawShader.loadShaders("draw.vert", "draw.frag");
-    gaussianProgram.loadShaders("draw.vert", "gaussian.frag");
-    sobelProgram.loadShaders("draw.vert", "sobel.frag");
-    gmProgram.loadShaders("draw.vert", "gradientMagnitude.frag");
-    etf0Program.loadShaders("draw.vert", "etf0.frag");
-    etfProgram.loadShaders("draw.vert", "ETF.frag");
-    dogProgram.loadShaders("draw.vert", "DoG.frag");
-    xdogProgram.loadShaders("draw.vert", "XDoG.frag");
-
+ 
     float vertices[] = {
         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,   // top right
         1.0f, -1.0f, 0.0f, 1.0f, 0.0f,   // bottom right
@@ -516,6 +327,9 @@ void init()
     etf0Buffer.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
     dogBuffer.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
     edgeBuffer.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+
+    xdog.init();
+    xdog.setWidth(SCR_WIDTH); xdog.setHeight(SCR_HEIGHT);
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly

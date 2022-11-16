@@ -85,5 +85,8 @@
     <ClInclude Include="..\include\texture.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="XDOG.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
