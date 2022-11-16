@@ -162,6 +162,7 @@
     <None Include="model.vert" />
     <None Include="sobel.frag" />
     <None Include="sobely.frag" />
+    <None Include="XDoG.frag" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\camera.h" />

@@ -55,6 +55,11 @@ void renderOBJ();
 void drawWindow();
 void applyGaussian(int order);
 void applySobel(int order);
+void calculateGM();
+void calculateETF0();
+void calculateETF();
+void applyDOG();
+void applyXDOG();
 void init();
 
 // settings
@@ -81,14 +86,20 @@ struct nk_glfw glfw = { 0 };
 struct nk_context* ctx;
 struct nk_colorf bg;
 
-Shader ourShader, drawShader, gaussianProgram, sobelProgram;
+Shader ourShader, drawShader, gaussianProgram, sobelProgram, gmProgram, etf0Program, etfProgram, dogProgram, xdogProgram;
 Model ourModel;
 
-Framebuffer switchBuffer0, switchBuffer1, sobelBufferX, sobelBufferY;
+Framebuffer originalBuffer, switchBuffer, switchBuffer2, sobelBufferX, sobelBufferY, gmBuffer, etf0Buffer, dogBuffer, edgeBuffer;
 GLuint vao, vbo, ebo;
 
-
+// XDOG parameter
 float sigma = 0.2f;
+float sigma_c = 1.7f;
+float sigma_m = 5.0f;
+float k = 1.4f;
+float p = 39.f;
+float ep = 0.6f;
+float phi = 0.016f;
 
 int main()
 {
@@ -133,8 +144,8 @@ int main()
     init();
 
     // load models
-    //ourModel.Load("C:/model/backpack/backpack.obj");
-    ourModel.Load("C:/model/stanford-bunny.obj");
+    ourModel.Load("C:/model/backpack/backpack.obj");
+    //ourModel.Load("C:/model/stanford-bunny.obj");
     // ourModel.Load("C:/model/chicken/scene.gltf");
 
 
@@ -164,18 +175,26 @@ int main()
         applySobel(0);
         applySobel(1);
 
+        calculateGM();
+
+        calculateETF0();
+        calculateETF();
+
+        applyDOG();
+        applyXDOG();
+
         drawWindow();
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     nk_glfw3_shutdown(&glfw);
-    switchBuffer0.deleteFramebuffer();
+    originalBuffer.deleteFramebuffer();
 
     glfwTerminate();
     return 0;
 }
-
+float etf = 7;
 void renderUI()
 {
     // NuKlear GUI 
@@ -191,6 +210,27 @@ void renderUI()
 
         nk_labelf(ctx, NK_TEXT_LEFT, "sigma = %.1f", sigma);
         nk_slider_float(ctx, 0.0f, &sigma, 1.0f, 0.01f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "eft time = %.1f", etf);
+        nk_slider_float(ctx, 0.0f, &etf, 10.0f, 1.0f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "sigma_m = %.1f", sigma_m);
+        nk_slider_float(ctx, 0.0f, &sigma_m, 50.0f, 0.1f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "sigma_c = %.1f", sigma_c);
+        nk_slider_float(ctx, 0.0f, &sigma_c, 50.0f, 0.1f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "Thickness(k) = %.1f", k);
+        nk_slider_float(ctx, 0.0f, &k, 10.0f, 0.1f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "Detail(p) = %.1f", p);
+        nk_slider_float(ctx, 0.0f, &p, 100.0f, 0.1f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "ep = %.2f", ep);
+        nk_slider_float(ctx, 0.0f, &ep, 1.0f, 0.01f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "phi = %.3f", phi);
+        nk_slider_float(ctx, 0.0f, &phi, 0.1f, 0.001f);
     }
     nk_end(ctx);
 
@@ -203,7 +243,7 @@ void renderOBJ()
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    switchBuffer0.bindBuffer();
+    originalBuffer.bindBuffer();
     glEnable(GL_DEPTH_TEST);
 
     glClearColor(1.0f, 0.5f, 0.5f, 1.0f);
@@ -232,8 +272,8 @@ void renderOBJ()
 }
 void applyGaussian(int order)
 {
-    if (order == 0) switchBuffer1.bindBuffer();
-    else switchBuffer0.bindBuffer();
+    if (order == 0) switchBuffer.bindBuffer();
+    else switchBuffer2.bindBuffer();
 
     glDisable(GL_DEPTH_TEST);
     glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
@@ -242,8 +282,8 @@ void applyGaussian(int order)
     gaussianProgram.use();
     glBindVertexArray(vao);
 
-    if (order == 0) switchBuffer0.bind();
-    else switchBuffer1.bind();
+    if (order == 0) originalBuffer.bind();
+    else switchBuffer.bind();
 
     gaussianProgram.setInt("len", SCR_WIDTH);
     gaussianProgram.setInt("order", order);
@@ -256,14 +296,13 @@ void applySobel(int order)
     if (order == 0) sobelBufferX.bindBuffer();
     else sobelBufferY.bindBuffer();
 
-    glDisable(GL_DEPTH_TEST);
     glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     sobelProgram.use();
     glBindVertexArray(vao);
 
-    switchBuffer1.bind();
+    switchBuffer2.bind();
 
     sobelProgram.setInt("width", SCR_WIDTH);
     sobelProgram.setInt("height", SCR_HEIGHT);
@@ -271,9 +310,145 @@ void applySobel(int order)
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
+// gradient magnitude 
+void calculateGM()
+{
+    gmBuffer.bindBuffer();
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
 
+    gmProgram.use();
+    glBindVertexArray(vao);
 
+    glActiveTexture(GL_TEXTURE0 + 1);
+    sobelBufferX.bind();
+    gmProgram.setInt("sobelx", 1);
 
+    glActiveTexture(GL_TEXTURE0);
+    sobelBufferY.bind();
+    gmProgram.setInt("sobely", 0);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+}
+void calculateETF0()
+{
+    etf0Buffer.bindBuffer();
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    etf0Program.use();
+    glBindVertexArray(vao);
+
+    glActiveTexture(GL_TEXTURE0 + 2);
+    gmBuffer.bind();
+    etf0Program.setInt("magnitude", 2);
+
+    glActiveTexture(GL_TEXTURE0 + 1);
+    sobelBufferX.bind();
+    etf0Program.setInt("sobelx", 1);
+
+    glActiveTexture(GL_TEXTURE0);
+    sobelBufferY.bind();
+    etf0Program.setInt("sobely", 0);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+}
+void calculateETF()
+{
+    for (int i = 0; i <etf; i++)
+    {
+        if (i % 2 == 0)
+        {
+            switchBuffer.bindBuffer();
+            glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            etfProgram.use();
+            glBindVertexArray(vao);
+
+            glActiveTexture(GL_TEXTURE0 + 1);
+            etf0Buffer.bind();
+            etfProgram.setInt("ETF", 1);
+
+            glActiveTexture(GL_TEXTURE0);
+            gmBuffer.bind();
+            etfProgram.setInt("magnitude", 0);
+
+            etfProgram.setInt("width", SCR_WIDTH);
+
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        }
+        else
+        {
+            etf0Buffer.bindBuffer();
+            glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            etfProgram.use();
+            glBindVertexArray(vao);
+
+            glActiveTexture(GL_TEXTURE0 + 1);
+            switchBuffer.bind();
+            etfProgram.setInt("ETF", 1);
+
+            glActiveTexture(GL_TEXTURE0);
+            gmBuffer.bind();
+            etfProgram.setInt("magnitude", 0);
+
+            etfProgram.setInt("width", SCR_WIDTH);
+
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        }  
+    }
+}
+void applyDOG()
+{
+    dogBuffer.bindBuffer();
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    dogProgram.use();
+    glBindVertexArray(vao);
+
+    glActiveTexture(GL_TEXTURE0 + 1);
+    etf0Buffer.bind();
+    dogProgram.setInt("ETF", 1);
+
+    glActiveTexture(GL_TEXTURE0);
+    originalBuffer.bind();
+    dogProgram.setInt("source", 0);
+
+    dogProgram.setInt("width", SCR_WIDTH);
+    dogProgram.setFloat("sigma_c", sigma_c);
+    dogProgram.setFloat("k", k);
+    dogProgram.setFloat("p", p);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+}
+void applyXDOG()
+{
+    edgeBuffer.bindBuffer();
+    glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    xdogProgram.use();
+    glBindVertexArray(vao);
+
+    glActiveTexture(GL_TEXTURE0 + 1);
+    etf0Buffer.bind();
+    xdogProgram.setInt("ETF", 1);
+
+    glActiveTexture(GL_TEXTURE0);
+    dogBuffer.bind();
+    xdogProgram.setInt("dog", 0);
+
+    xdogProgram.setInt("width", SCR_WIDTH);
+    xdogProgram.setFloat("sigma_m", sigma_m);
+    xdogProgram.setFloat("epsilon", ep);
+    xdogProgram.setFloat("phi", phi);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+}
 void drawWindow()
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -283,7 +458,7 @@ void drawWindow()
 
     drawShader.use();
     glBindVertexArray(vao);
-    sobelBufferY.bind();
+    edgeBuffer.bind();
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 }
@@ -294,6 +469,11 @@ void init()
     drawShader.loadShaders("draw.vert", "draw.frag");
     gaussianProgram.loadShaders("draw.vert", "gaussian.frag");
     sobelProgram.loadShaders("draw.vert", "sobel.frag");
+    gmProgram.loadShaders("draw.vert", "gradientMagnitude.frag");
+    etf0Program.loadShaders("draw.vert", "etf0.frag");
+    etfProgram.loadShaders("draw.vert", "ETF.frag");
+    dogProgram.loadShaders("draw.vert", "DoG.frag");
+    xdogProgram.loadShaders("draw.vert", "XDoG.frag");
 
     float vertices[] = {
         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,   // top right
@@ -327,11 +507,15 @@ void init()
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    switchBuffer0.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
-    switchBuffer1.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+    originalBuffer.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
+    switchBuffer.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+    switchBuffer2.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
     sobelBufferX.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
     sobelBufferY.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
-
+    gmBuffer.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+    etf0Buffer.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+    dogBuffer.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
+    edgeBuffer.generateBuffer(SCR_WIDTH, SCR_HEIGHT);
 }
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
@@ -353,11 +537,6 @@ void processInput(GLFWwindow* window)
         camera.ProcessKeyboard(UP, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
         camera.ProcessKeyboard(DOWN, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS)
-    {
-        step *= -1;
-        cout << step << endl;
-    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -369,7 +548,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     SCR_WIDTH = width;
     SCR_HEIGHT = height;
 
-    switchBuffer0.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
+    originalBuffer.generateBufferwithDepth(SCR_WIDTH, SCR_HEIGHT);
 }
 
 // glfw: whenever the mouse moves, this callback is called
