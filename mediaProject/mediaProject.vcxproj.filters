@@ -62,6 +62,9 @@
     <None Include="drawEdge.frag">
       <Filter>소스 파일</Filter>
     </None>
+    <None Include="GoochShading.frag">
+      <Filter>소스 파일</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\camera.h">

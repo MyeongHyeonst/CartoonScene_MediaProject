@@ -53,7 +53,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
 
 void renderUI();
-void renderOBJ(Framebuffer f);
+void renderOBJ(Framebuffer f, Shader shader);
 void drawWindow(Framebuffer edgeB);
 
 void init();
@@ -75,6 +75,7 @@ float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
 // lighting
+float lx = 1.2f, ly = 1.0f, lz = 2.0f;
 glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
 
 // nuklear setting
@@ -82,7 +83,7 @@ struct nk_glfw glfw = { 0 };
 struct nk_context* ctx;
 struct nk_colorf bg;
 
-Shader ourShader, drawEdgeShader, drawColorShader;
+Shader ourShader, drawEdgeShader, drawColorShader, goochShader;
 Model ourModel;
 
 Framebuffer originalBuffer, switchBuffer, switchBuffer2, sobelBufferX, sobelBufferY, gmBuffer, etf0Buffer, dogBuffer, edgeBuffer;
@@ -99,15 +100,20 @@ float phi = 0.016f;
 float etf = 7;
 XDOG xdog;
 GLFWwindow *window, *UI;
+
+int shading_num = 0;
 int main()
 {
     
     init();
 
     // load models
-    ourModel.Load("C:/model/backpack/backpack.obj");
+    //ourModel.Load("C:/model/backpack/backpack.obj");
+    ourModel.Load("C:/model/autumn_house/scene.gltf");
+    //ourModel.Load("C:/model/modern_bedroom/scene.gltf");
+    //ourModel.Load("C:/model/cafe-misti/scene.gltf");
+    //ourModel.Load("C:/model/cafe/scene.gltf");
     //ourModel.Load("C:/model/stanford-bunny.obj");
-    // ourModel.Load("C:/model/chicken/scene.gltf");
 
 
     // nuklear //
@@ -129,7 +135,16 @@ int main()
         glfwMakeContextCurrent(window);
         processInput(window);
 
-        renderOBJ(originalBuffer);
+        switch (shading_num) 
+        {
+        case 0:
+            renderOBJ(originalBuffer, goochShader);
+            break;
+        case 1:
+            renderOBJ(originalBuffer, ourShader);
+            break;
+        }
+        /*
         xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
         xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
 
@@ -145,7 +160,7 @@ int main()
         xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
 
         drawWindow(edgeBuffer);
-
+        */
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -155,7 +170,8 @@ int main()
     glfwTerminate();
     return 0;
 }
-
+float lr = 1, lg = 1, lb = 1;
+float sr = 0, sg = 0, sb = 0;
 void renderUI()
 {
     // NuKlear GUI 
@@ -192,43 +208,68 @@ void renderUI()
 
         nk_labelf(ctx, NK_TEXT_LEFT, "phi = %.3f", phi);
         nk_slider_float(ctx, 0.0f, &phi, 0.1f, 0.001f);
+        
+        nk_labelf(ctx, NK_TEXT_LEFT, "light r = %.1f", lr);
+        nk_slider_float(ctx, 0.0f, &lr, 1.0f, 0.1f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "light g = %.1f", lg);
+        nk_slider_float(ctx, 0.0f, &lg, 1.0f, 0.1f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "light b = %.1f", lb);
+        nk_slider_float(ctx, 0.0f, &lb, 1.0f, 0.1f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "shade r = %.1f", sr);
+        nk_slider_float(ctx, 0.0f, &sr, 1.0f, 0.1f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "shade g = %.1f", sg);
+        nk_slider_float(ctx, 0.0f, &sg, 1.0f, 0.1f);
+
+        nk_labelf(ctx, NK_TEXT_LEFT, "shade b = %.1f", sb);
+        nk_slider_float(ctx, 0.0f, &sb, 1.0f, 0.1f);
+
+        if (nk_button_label(ctx, "Gooch Shading")) shading_num = 0;
+        if (nk_button_label(ctx, "Phong Shading")) shading_num = 1;
+
     }
     nk_end(ctx);
 
     nk_glfw3_render(&glfw, NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
 }
-void renderOBJ(Framebuffer f)
+float s = 1;
+
+void renderOBJ(Framebuffer f, Shader shader)
 {
     float currentFrame = static_cast<float>(glfwGetTime());
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    f.bindBuffer();
+    //f.bindBuffer();
+    glBindFramebuffer(GL_FRAMEBUFFER_DEFAULT, 0);
     glEnable(GL_DEPTH_TEST);
 
     glClearColor(1.0f, 0.5f, 0.5f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // model rendering
-    ourShader.use();
-    ourShader.setVec3("objectColor", 1.0f, 0.5f, 0.31f);
-    ourShader.setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-    ourShader.setVec3("lightPos", lightPos);
-    ourShader.setVec3("viewPos", camera.Position);
+    shader.use();
+    shader.setVec3("objectColor", sr, sg, sb);
+    shader.setVec3("lightColor", lr, lg, lb);
+    shader.setVec3("lightPos", lightPos);
+    shader.setVec3("viewPos", camera.Position);
 
     // view/projection transformations
     glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
     glm::mat4 view = camera.GetViewMatrix();
-    ourShader.setMat4("projection", projection);
-    ourShader.setMat4("view", view);
+    shader.setMat4("projection", projection);
+    shader.setMat4("view", view);
 
     // render the loaded model
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
     //model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0, 1.0, 0.0));
-    model = glm::scale(model, (glm::vec3(1.0f, 1.0f, 1.0f))); //*glm::vec3(3)));
-    ourShader.setMat4("model", model);
-    ourModel.Draw(ourShader);
+    model = glm::scale(model, (glm::vec3(1.0f, 1.0f, 1.0f)*glm::vec3(s)));
+    shader.setMat4("model", model);
+    ourModel.Draw(shader);
 }
 void drawWindow(Framebuffer edgeB)
 {
@@ -239,7 +280,7 @@ void drawWindow(Framebuffer edgeB)
 
     drawColorShader.use();
     glBindVertexArray(vao);
-    originalBuffer.bind();
+    switchBuffer2.bind();
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
@@ -293,6 +334,7 @@ void init()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     ourShader.loadShaders("model.vert", "model.frag");
+    goochShader.loadShaders("model.vert", "GoochShading.frag");
     drawColorShader.loadShaders("draw.vert", "draw.frag");
     drawEdgeShader.loadShaders("draw.vert", "drawEdge.frag");
  
@@ -349,6 +391,7 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
+    // Camera Position
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         camera.ProcessKeyboard(FORWARD, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -361,6 +404,44 @@ void processInput(GLFWwindow* window)
         camera.ProcessKeyboard(UP, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
         camera.ProcessKeyboard(DOWN, deltaTime);
+
+    // Light Position
+    if (glfwGetKey(window, GLFW_KEY_U) == GLFW_PRESS)
+    {
+        lz += 0.1f;
+        lightPos = glm::vec3(lx, ly, lz);
+    }
+    if (glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS)
+    {
+        lz -= 0.1f;
+        lightPos = glm::vec3(lx, ly, lz);
+    }
+    if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS)
+    {
+        lx += 0.1f;
+        lightPos = glm::vec3(lx, ly, lz);
+    }
+    if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
+    {
+        lx -= 0.1f;
+        lightPos = glm::vec3(lx, ly, lz);
+    }
+    if (glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS)
+    {
+        ly += 0.1f;
+        lightPos = glm::vec3(lx, ly, lz);
+    }
+    if (glfwGetKey(window, GLFW_KEY_I) == GLFW_PRESS)
+    {
+        ly -= 0.1f;
+        lightPos = glm::vec3(lx, ly, lz);
+    }
+
+
+    if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS)
+        s -= 0.01f;
+    if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS)
+        s+= 0.01f;
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

@@ -157,6 +157,7 @@
     <None Include="ETF.frag" />
     <None Include="etf0.frag" />
     <None Include="gaussian.frag" />
+    <None Include="GoochShading.frag" />
     <None Include="gradientMagnitude.frag" />
     <None Include="model.frag" />
     <None Include="model.vert" />
