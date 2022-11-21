@@ -136,11 +136,6 @@ int main()
     // -----------
     while (!glfwWindowShouldClose(window))
     {
-        
-        //glfwMakeContextCurrent(UI);
-
-        //glfwSwapBuffers(UI);
-
         processInput(window);
 
         switch (shading_num)
@@ -203,7 +198,7 @@ void renderUI()
         static const float ratio[] = { 100, 100 };
         nk_layout_row(ctx, NK_STATIC, 25, 2, ratio);
 
-        nk_labelf(ctx, NK_TEXT_LEFT, "sigma = %.1f", sigma);
+        nk_labelf(ctx, NK_TEXT_LEFT, "sigma = %.2f", sigma);
         nk_slider_float(ctx, 0.0f, &sigma, 1.0f, 0.01f);
 
         nk_labelf(ctx, NK_TEXT_LEFT, "eft time = %.1f", etf);
@@ -212,8 +207,8 @@ void renderUI()
         nk_labelf(ctx, NK_TEXT_LEFT, "sigma_m = %.1f", sigma_m);
         nk_slider_float(ctx, 0.0f, &sigma_m, 50.0f, 0.1f);
 
-        nk_labelf(ctx, NK_TEXT_LEFT, "sigma_c = %.1f", sigma_c);
-        nk_slider_float(ctx, 0.0f, &sigma_c, 50.0f, 0.1f);
+        nk_labelf(ctx, NK_TEXT_LEFT, "sigma_c = %.2f", sigma_c);
+        nk_slider_float(ctx, 0.0f, &sigma_c, 10.0f, 0.01f);
 
         nk_labelf(ctx, NK_TEXT_LEFT, "Thickness(k) = %.1f", k);
         nk_slider_float(ctx, 0.0f, &k, 10.0f, 0.1f);
@@ -310,6 +305,9 @@ void drawWindow(Framebuffer colorB, Framebuffer edgeB, bool isEdge)
 
     if (isEdge)
     {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
         drawEdgeShader.use();
         glBindVertexArray(vao);
         edgeB.bind();
@@ -350,8 +348,6 @@ void init()
 
     // For blend
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     ourShader.loadShaders("model.vert", "model.frag");
     goochShader.loadShaders("model.vert", "GoochShading.frag");
