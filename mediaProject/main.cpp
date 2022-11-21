@@ -54,15 +54,18 @@ void processInput(GLFWwindow* window);
 
 void renderUI();
 void renderOBJ(Framebuffer f, Shader shader);
-void drawWindow(Framebuffer edgeB);
+void drawWindow(Framebuffer colorB, Framebuffer edgeB, bool isEdge);
 
 void init();
 
 // settings
-unsigned int SCR_WIDTH = 800;
+unsigned int SCR_WIDTH = 1200;
 unsigned int SCR_HEIGHT = 600;
 
-const unsigned int UI_WIDTH = 200;
+unsigned int VIEW_WIDTH;
+unsigned int VIEW_HEIGHT;
+
+const unsigned int UI_WIDTH = 400;
 const unsigned int UI_HEIGHT = 600;
 
 // camera
@@ -99,9 +102,10 @@ float ep = 0.6f;
 float phi = 0.016f;
 float etf = 7;
 XDOG xdog;
-GLFWwindow *window, *UI;
+GLFWwindow *window;
 
 int shading_num = 0;
+int drawing_step = 0;
 int main()
 {
     
@@ -117,25 +121,29 @@ int main()
 
 
     // nuklear //
-    glfwMakeContextCurrent(UI);
-    ctx = nk_glfw3_init(&glfw, UI, NK_GLFW3_DEFAULT);
+
+    glfwMakeContextCurrent(window);
+    ctx = nk_glfw3_init(&glfw, window, NK_GLFW3_DEFAULT);
     // Font
     struct nk_font_atlas* atlas;
     nk_glfw3_font_stash_begin(&glfw, &atlas);
     nk_glfw3_font_stash_end(&glfw);
 
+    VIEW_WIDTH = SCR_WIDTH - UI_WIDTH;
+    VIEW_HEIGHT = SCR_HEIGHT;
+
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
     {
-        glfwMakeContextCurrent(UI);
-        renderUI();
-        glfwSwapBuffers(UI);
+        
+        //glfwMakeContextCurrent(UI);
 
-        glfwMakeContextCurrent(window);
+        //glfwSwapBuffers(UI);
+
         processInput(window);
 
-        switch (shading_num) 
+        switch (shading_num)
         {
         case 0:
             renderOBJ(originalBuffer, goochShader);
@@ -144,23 +152,33 @@ int main()
             renderOBJ(originalBuffer, ourShader);
             break;
         }
-        /*
-        xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
-        xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
+        
+        switch (drawing_step)
+        {
+        case 0:
+            glDisable(GL_DEPTH_TEST);
+            drawWindow(originalBuffer, edgeBuffer, false);
+            break;
+        case 1:
+            xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
+            xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
 
-        xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 0);
-        xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 1);
-        
-        xdog.calculateGM(gmBuffer, sobelBufferX, sobelBufferY);
-        
-        xdog.calculateETF0(etf0Buffer, gmBuffer, sobelBufferX, sobelBufferY);
-        xdog.calculateETF(switchBuffer, etf0Buffer, gmBuffer, etf);
-        
-        xdog.applyDOG(dogBuffer, etf0Buffer, originalBuffer, sigma_c, k, p);
-        xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
+            xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 0);
+            xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 1);
 
-        drawWindow(edgeBuffer);
-        */
+            xdog.calculateGM(gmBuffer, sobelBufferX, sobelBufferY);
+
+            xdog.calculateETF0(etf0Buffer, gmBuffer, sobelBufferX, sobelBufferY);
+            xdog.calculateETF(switchBuffer, etf0Buffer, gmBuffer, etf);
+
+            xdog.applyDOG(dogBuffer, etf0Buffer, originalBuffer, sigma_c, k, p);
+            xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
+
+            drawWindow(switchBuffer2, edgeBuffer, true);
+            break;
+        }
+
+        renderUI();
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -177,7 +195,7 @@ void renderUI()
     // NuKlear GUI 
     nk_glfw3_new_frame(&glfw);
 
-    if (nk_begin(ctx, "UI", nk_rect(30, 30, UI_WIDTH-30, UI_HEIGHT/3.f),
+    if (nk_begin(ctx, "UI", nk_rect(5, 5, UI_WIDTH-10, UI_HEIGHT-10),
         NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE |
         NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE))
     {
@@ -229,9 +247,15 @@ void renderUI()
 
         if (nk_button_label(ctx, "Gooch Shading")) shading_num = 0;
         if (nk_button_label(ctx, "Phong Shading")) shading_num = 1;
+        if (nk_button_label(ctx, "Original")) drawing_step = 0;
+        if (nk_button_label(ctx, "XDOG")) drawing_step = 1;
 
     }
     nk_end(ctx);
+
+    //glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+    //glClear(GL_COLOR_BUFFER_BIT);
+
 
     nk_glfw3_render(&glfw, NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
 }
@@ -243,8 +267,8 @@ void renderOBJ(Framebuffer f, Shader shader)
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    //f.bindBuffer();
-    glBindFramebuffer(GL_FRAMEBUFFER_DEFAULT, 0);
+    f.bindBuffer();
+
     glEnable(GL_DEPTH_TEST);
 
     glClearColor(1.0f, 0.5f, 0.5f, 1.0f);
@@ -271,7 +295,7 @@ void renderOBJ(Framebuffer f, Shader shader)
     shader.setMat4("model", model);
     ourModel.Draw(shader);
 }
-void drawWindow(Framebuffer edgeB)
+void drawWindow(Framebuffer colorB, Framebuffer edgeB, bool isEdge)
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
@@ -280,16 +304,18 @@ void drawWindow(Framebuffer edgeB)
 
     drawColorShader.use();
     glBindVertexArray(vao);
-    switchBuffer2.bind();
+    colorB.bind();
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-    drawEdgeShader.use();
-    glBindVertexArray(vao);
-    edgeB.bind();
+    if (isEdge)
+    {
+        drawEdgeShader.use();
+        glBindVertexArray(vao);
+        edgeB.bind();
 
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    }
 }
 void init()
 {
@@ -302,12 +328,6 @@ void init()
     // glfw window creation
     window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Viewer", NULL, NULL);
     if (window == NULL)
-    {
-        std::cout << "Failed to create GLFW window" << std::endl;
-        glfwTerminate();
-    }
-    UI = glfwCreateWindow(UI_WIDTH, UI_HEIGHT, "UI", NULL, NULL);
-    if (UI == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
@@ -448,7 +468,7 @@ void processInput(GLFWwindow* window)
 // ---------------------------------------------------------------------------------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
-    glViewport(0, 0, width, height);
+    //glViewport(0, 0, width, height);
 
     SCR_WIDTH = width;
     SCR_HEIGHT = height;
@@ -475,7 +495,8 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     lastX = xpos;
     lastY = ypos;
 
-    camera.ProcessMouseMovement(xoffset, yoffset);
+    if(xpos > UI_WIDTH)
+        camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
 // glfw: whenever the mouse scroll wheel scrolls, this callback is called
