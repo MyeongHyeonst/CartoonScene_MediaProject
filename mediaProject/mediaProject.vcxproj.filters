@@ -91,5 +91,8 @@
     <ClInclude Include="XDOG.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="export.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

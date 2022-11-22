@@ -27,6 +27,7 @@
 #include "model.h"
 #include "framebuffer.h"
 #include "XDOG.h"
+#include "export.h"
 
 #define GLEW_STATIC
 
@@ -102,10 +103,13 @@ float ep = 0.6f;
 float phi = 0.016f;
 float etf = 7;
 XDOG xdog;
-GLFWwindow *window;
+GLFWwindow *window, *UI;
 
 int shading_num = 0;
 int drawing_step = 0;
+
+char exportPath[] = "output/output.png";
+
 int main()
 {
     
@@ -122,20 +126,21 @@ int main()
 
     // nuklear //
 
-    glfwMakeContextCurrent(window);
-    ctx = nk_glfw3_init(&glfw, window, NK_GLFW3_DEFAULT);
+    glfwMakeContextCurrent(UI);
+    ctx = nk_glfw3_init(&glfw, UI, NK_GLFW3_DEFAULT);
     // Font
     struct nk_font_atlas* atlas;
     nk_glfw3_font_stash_begin(&glfw, &atlas);
     nk_glfw3_font_stash_end(&glfw);
 
-    VIEW_WIDTH = SCR_WIDTH - UI_WIDTH;
-    VIEW_HEIGHT = SCR_HEIGHT;
-
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
     {
+        renderUI();
+
+        glfwMakeContextCurrent(window);
+
         processInput(window);
 
         switch (shading_num)
@@ -171,9 +176,24 @@ int main()
 
             drawWindow(switchBuffer2, edgeBuffer, true);
             break;
+        case 2 : 
+            xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
+            xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
+
+            xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 0);
+            xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 1);
+
+            xdog.calculateGM(gmBuffer, sobelBufferX, sobelBufferY);
+
+            xdog.calculateETF0(etf0Buffer, gmBuffer, sobelBufferX, sobelBufferY);
+            xdog.calculateETF(switchBuffer, etf0Buffer, gmBuffer, etf);
+
+            xdog.applyDOG(dogBuffer, etf0Buffer, originalBuffer, sigma_c, k, p);
+            xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
+
+            drawWindow(edgeBuffer, edgeBuffer, false);
         }
 
-        renderUI();
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -187,6 +207,7 @@ float lr = 1, lg = 1, lb = 1;
 float sr = 0, sg = 0, sb = 0;
 void renderUI()
 {
+    glfwMakeContextCurrent(UI);
     // NuKlear GUI 
     nk_glfw3_new_frame(&glfw);
 
@@ -244,15 +265,18 @@ void renderUI()
         if (nk_button_label(ctx, "Phong Shading")) shading_num = 1;
         if (nk_button_label(ctx, "Original")) drawing_step = 0;
         if (nk_button_label(ctx, "XDOG")) drawing_step = 1;
+        if (nk_button_label(ctx, "Edge")) drawing_step = 2;
+
+        nk_label(ctx, "Exprot : O", NK_TEXT_ALIGN_LEFT);
 
     }
     nk_end(ctx);
 
-    //glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
-    //glClear(GL_COLOR_BUFFER_BIT);
-
+    glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     nk_glfw3_render(&glfw, NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
+    glfwSwapBuffers(UI);
 }
 float s = 1;
 
@@ -326,6 +350,12 @@ void init()
     // glfw window creation
     window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Viewer", NULL, NULL);
     if (window == NULL)
+    {
+        std::cout << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+    }
+    UI = glfwCreateWindow(UI_WIDTH, UI_HEIGHT, "UI", NULL, NULL);
+    if (UI == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
@@ -458,6 +488,9 @@ void processInput(GLFWwindow* window)
         s -= 0.01f;
     if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS)
         s+= 0.01f;
+
+    if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS)
+        saveImage(exportPath, window);
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -491,8 +524,7 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     lastX = xpos;
     lastY = ypos;
 
-    if(xpos > UI_WIDTH)
-        camera.ProcessMouseMovement(xoffset, yoffset);
+    camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
 // glfw: whenever the mouse scroll wheel scrolls, this callback is called

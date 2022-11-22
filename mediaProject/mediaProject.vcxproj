@@ -172,6 +172,7 @@
     <ClInclude Include="..\include\model.h" />
     <ClInclude Include="..\include\shader.h" />
     <ClInclude Include="..\include\texture.h" />
+    <ClInclude Include="export.h" />
     <ClInclude Include="XDOG.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
