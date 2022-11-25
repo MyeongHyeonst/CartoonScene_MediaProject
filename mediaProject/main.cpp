@@ -1,3 +1,5 @@
+// ToDo : camera 회전 -> model 회전 바꾸기
+
 #define _CRT_SECURE_NO_WARNINGS
 
 /* nuklear - 1.32.0 - public domain */
@@ -19,6 +21,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <opencv2/core.hpp>
+#include <opencv2/opencv.hpp>
+
 #include <iostream>
 #include <vector>
 
@@ -28,6 +33,7 @@
 #include "framebuffer.h"
 #include "XDOG.h"
 #include "export.h"
+#include "guidedfilter.hpp"
 
 #define GLEW_STATIC
 
@@ -79,40 +85,58 @@ float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
 // lighting
+float r = 1;
+int theta = 45;
+int theta2 = 0;
 float lx = 1.2f, ly = 1.0f, lz = 2.0f;
 glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+
+glm::vec3 objPos = glm::vec3(0, 0, 0);
+glm::vec3 objRot = glm::vec3(0, 0, 0);
 
 // nuklear setting
 struct nk_glfw glfw = { 0 };
 struct nk_context* ctx;
 struct nk_colorf bg;
 
-Shader ourShader, drawEdgeShader, drawColorShader, goochShader;
+Shader ourShader, drawEdgeShader, drawColorShader, goochShader, goochToonShader, phongToonShader;
 Model ourModel;
+cv::Mat source;
 
 Framebuffer originalBuffer, switchBuffer, switchBuffer2, sobelBufferX, sobelBufferY, gmBuffer, etf0Buffer, dogBuffer, edgeBuffer;
 GLuint vao, vbo, ebo;
 
 // XDOG parameter
 float sigma = 0.2f;
-float sigma_c = 1.7f;
+float sigma_c = 0.7f;
 float sigma_m = 5.0f;
 float k = 1.4f;
 float p = 39.f;
 float ep = 0.6f;
 float phi = 0.016f;
 float etf = 7;
-XDOG xdog;
+XDoG xdog;
 GLFWwindow *window, *UI;
 
 int shading_num = 0;
 int drawing_step = 0;
 
+int levels = 1;
+
 char exportPath[] = "output/output.png";
+char edgePath[] = "output/edge.png";
+char colorPath[] = "output/color.png";
+
+nk_colorf backcol = { 1, 0.5, 0.5, 1 }; // Background color
+nk_colorf lightcol = { 1, 0.5, 0.5, 1 }; // light color
+nk_colorf shadingcol = { 0, 0, 0.5, 1 }; // shading color
+
+enum { GOOCH, PHONG, GOOCHTOON, PHONGTOON };
+enum { ORIGINAL, XDOG, EDGE };
+int posMAX = 10;
 
 int main()
-{
-    
+{ 
     init();
 
     // load models
@@ -121,11 +145,20 @@ int main()
     //ourModel.Load("C:/model/modern_bedroom/scene.gltf");
     //ourModel.Load("C:/model/cafe-misti/scene.gltf");
     //ourModel.Load("C:/model/cafe/scene.gltf");
+    //ourModel.Load("C:/model/cafe_soca/scene.gltf");
     //ourModel.Load("C:/model/stanford-bunny.obj");
-
-
+    
+    
+    // image
+   /* source = cv::imread("C:/model/image/seoul.jpg");
+    cv::resize(source, source, cv::Size(300, 300));
+    source.convertTo(source, CV_32F, 1 / 255.f);
+    cv::Mat result = GuidedFilter(source, source, cv::Size(2,2), 0.1f);
+    cv::imshow("source", source);
+    cv::imshow("result", result);
+    cv::waitKey();*/
     // nuklear //
-
+     
     glfwMakeContextCurrent(UI);
     ctx = nk_glfw3_init(&glfw, UI, NK_GLFW3_DEFAULT);
     // Font
@@ -145,21 +178,27 @@ int main()
 
         switch (shading_num)
         {
-        case 0:
+        case GOOCH:
             renderOBJ(originalBuffer, goochShader);
             break;
-        case 1:
+        case PHONG:
             renderOBJ(originalBuffer, ourShader);
+            break;
+        case GOOCHTOON:
+            renderOBJ(originalBuffer, goochToonShader);
+            break;
+        case PHONGTOON:
+            renderOBJ(originalBuffer, phongToonShader);
             break;
         }
         
         switch (drawing_step)
         {
-        case 0:
+        case ORIGINAL:
             glDisable(GL_DEPTH_TEST);
             drawWindow(originalBuffer, edgeBuffer, false);
             break;
-        case 1:
+        case XDOG:
             xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
             xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
 
@@ -176,7 +215,7 @@ int main()
 
             drawWindow(switchBuffer2, edgeBuffer, true);
             break;
-        case 2 : 
+        case EDGE : 
             xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
             xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
 
@@ -203,8 +242,7 @@ int main()
     glfwTerminate();
     return 0;
 }
-float lr = 1, lg = 1, lb = 1;
-float sr = 0, sg = 0, sb = 0;
+
 void renderUI()
 {
     glfwMakeContextCurrent(UI);
@@ -216,8 +254,11 @@ void renderUI()
         NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE))
     {
         // Contents
-        static const float ratio[] = { 100, 100 };
-        nk_layout_row(ctx, NK_STATIC, 25, 2, ratio);
+        static const float ratio[] = { 120, 200 };
+        static const float ratio2[] = { 320 };
+        static const float ratio3[] = { 160, 160 };
+        static const float ratio4[] = { 20, 100, 10, 100, 20, 100 };
+        nk_layout_row(ctx, NK_STATIC, 15, 2, ratio);
 
         nk_labelf(ctx, NK_TEXT_LEFT, "sigma = %.2f", sigma);
         nk_slider_float(ctx, 0.0f, &sigma, 1.0f, 0.01f);
@@ -242,32 +283,77 @@ void renderUI()
 
         nk_labelf(ctx, NK_TEXT_LEFT, "phi = %.3f", phi);
         nk_slider_float(ctx, 0.0f, &phi, 0.1f, 0.001f);
-        
-        nk_labelf(ctx, NK_TEXT_LEFT, "light r = %.1f", lr);
-        nk_slider_float(ctx, 0.0f, &lr, 1.0f, 0.1f);
 
-        nk_labelf(ctx, NK_TEXT_LEFT, "light g = %.1f", lg);
-        nk_slider_float(ctx, 0.0f, &lg, 1.0f, 0.1f);
+        nk_labelf(ctx, NK_TEXT_LEFT, "levels = %d", levels);
+        nk_slider_int(ctx, 1, &levels, 10, 1);
 
-        nk_labelf(ctx, NK_TEXT_LEFT, "light b = %.1f", lb);
-        nk_slider_float(ctx, 0.0f, &lb, 1.0f, 0.1f);
+        nk_layout_row(ctx, NK_STATIC, 15, 1, ratio2);
+        nk_labelf(ctx, NK_TEXT_LEFT, "model Position (%.1f, %.1f, %.1f)", objPos.x, objPos.y, objPos.z);
+      
+        nk_layout_row(ctx, NK_STATIC, 15, 6, ratio4);
+        nk_labelf(ctx, NK_TEXT_LEFT, "x : ");
+        nk_slider_float(ctx, 0, &objPos.x, posMAX, 0.1f);
+        nk_labelf(ctx, NK_TEXT_LEFT, "y : ");
+        nk_slider_float(ctx, 0, &objPos.y, posMAX, 0.1f);
+        nk_labelf(ctx, NK_TEXT_LEFT, "z : ");
+        nk_slider_float(ctx, 0, &objPos.z, posMAX, 0.1f);
 
-        nk_labelf(ctx, NK_TEXT_LEFT, "shade r = %.1f", sr);
-        nk_slider_float(ctx, 0.0f, &sr, 1.0f, 0.1f);
+        nk_layout_row(ctx, NK_STATIC, 15, 1, ratio2);
+        nk_labelf(ctx, NK_TEXT_LEFT, "model Rotation (%.1f, %.1f, %.1f)", objRot.x, objRot.y, objRot.z);
+        nk_layout_row(ctx, NK_STATIC, 15, 6, ratio4);
+        nk_labelf(ctx, NK_TEXT_LEFT, "x : ");
+        nk_slider_float(ctx, 0, &objRot.x, 1, 0.1f);
+        nk_labelf(ctx, NK_TEXT_LEFT, "y : ");
+        nk_slider_float(ctx, 0, &objRot.y, 1, 0.1f);
+        nk_labelf(ctx, NK_TEXT_LEFT, "z : ");
+        nk_slider_float(ctx, 0, &objRot.z, 1, 0.1f);
 
-        nk_labelf(ctx, NK_TEXT_LEFT, "shade g = %.1f", sg);
-        nk_slider_float(ctx, 0.0f, &sg, 1.0f, 0.1f);
+        nk_layout_row(ctx, NK_STATIC, 15, 2, ratio);
+        nk_labelf(ctx, NK_TEXT_LEFT, "light r = %.1f", r);
+        nk_slider_float(ctx, 0, &r, 10, 0.1f);
+        nk_labelf(ctx, NK_TEXT_LEFT, "light theta = %d", theta);
+        nk_slider_int(ctx, 0, &theta, 360, 5);
+        nk_labelf(ctx, NK_TEXT_LEFT, "light theta2 = %d", theta);
+        nk_slider_int(ctx, 0, &theta2, 360, 5);
+        nk_layout_row(ctx, NK_STATIC, 15, 1, ratio2);
+        nk_labelf(ctx, NK_TEXT_LEFT, "light Position (%.1f, %.1f, %.1f)", lightPos.x, lightPos.y, lightPos.z);
 
-        nk_labelf(ctx, NK_TEXT_LEFT, "shade b = %.1f", sb);
-        nk_slider_float(ctx, 0.0f, &sb, 1.0f, 0.1f);
-
-        if (nk_button_label(ctx, "Gooch Shading")) shading_num = 0;
-        if (nk_button_label(ctx, "Phong Shading")) shading_num = 1;
-        if (nk_button_label(ctx, "Original")) drawing_step = 0;
-        if (nk_button_label(ctx, "XDOG")) drawing_step = 1;
-        if (nk_button_label(ctx, "Edge")) drawing_step = 2;
+        nk_layout_row(ctx, NK_STATIC, 15, 2, ratio3);
+        if (nk_button_label(ctx, "Gooch Shading")) shading_num = GOOCH;
+        if (nk_button_label(ctx, "Phong Shading")) shading_num = PHONG;
+        if (nk_button_label(ctx, "Gooch-toon Shading")) shading_num = GOOCHTOON;
+        if (nk_button_label(ctx, "Phong-toon Shading")) shading_num = PHONGTOON;
+        if (nk_button_label(ctx, "Original")) drawing_step = ORIGINAL;
+        if (nk_button_label(ctx, "XDOG")) drawing_step = XDOG;
+        if (nk_button_label(ctx, "Edge")) drawing_step = EDGE;
 
         nk_label(ctx, "Exprot : O", NK_TEXT_ALIGN_LEFT);
+
+        // Color picker
+        enum {BACK, LIGHT, SHADE};
+        static int colorpck = BACK;
+
+        nk_layout_row_dynamic(ctx, 30, 2);
+        if (nk_option_label(ctx, "Background", colorpck == BACK)) colorpck = BACK;
+        if (nk_option_label(ctx, "Light", colorpck == LIGHT)) colorpck = LIGHT;
+        if (nk_option_label(ctx, "Shade", colorpck == SHADE)) colorpck = SHADE;
+
+        nk_layout_space_begin(ctx, NK_DYNAMIC, 60, INT_MAX);
+        nk_layout_space_push(ctx, nk_rect(0.0, 0.0, 0.25, 1.0));
+        if(colorpck == BACK)
+            nk_label(ctx, "Background Color:", NK_TEXT_LEFT);
+        else if (colorpck == LIGHT)
+            nk_label(ctx, "Light Color:", NK_TEXT_LEFT);
+        else if (colorpck == SHADE)
+            nk_label(ctx, "Shade Color:", NK_TEXT_LEFT);
+        nk_layout_space_push(ctx, nk_rect(0.35 , 0.0, 0.30, 1.0));
+        if (colorpck == BACK)
+            nk_color_pick(ctx, &backcol, NK_RGBA);
+        else if (colorpck == LIGHT)
+            nk_color_pick(ctx, &lightcol, NK_RGBA);
+        else if (colorpck == SHADE)
+            nk_color_pick(ctx, &shadingcol, NK_RGBA);
+        nk_layout_space_push(ctx, nk_rect(0.75, 0.0, 0.25, 1.0));
 
     }
     nk_end(ctx);
@@ -279,6 +365,7 @@ void renderUI()
     glfwSwapBuffers(UI);
 }
 float s = 1;
+const float Pi = 3.1415f;
 
 void renderOBJ(Framebuffer f, Shader shader)
 {
@@ -290,15 +377,20 @@ void renderOBJ(Framebuffer f, Shader shader)
 
     glEnable(GL_DEPTH_TEST);
 
-    glClearColor(1.0f, 0.5f, 0.5f, 1.0f);
+    glClearColor(backcol.r, backcol.g, backcol.b, backcol.a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    lightPos.z = r * cos(Pi * theta / 360.f);
+    lightPos.y = r * sin(Pi * theta / 360.f);
+    lightPos.x = r * cos(Pi * theta2 / 360.f);
 
     // model rendering
     shader.use();
-    shader.setVec3("objectColor", sr, sg, sb);
-    shader.setVec3("lightColor", lr, lg, lb);
+    shader.setVec3("objectColor", shadingcol.r, shadingcol.g, shadingcol.b);
+    shader.setVec3("lightColor", lightcol.r, lightcol.g, lightcol.b);
     shader.setVec3("lightPos", lightPos);
     shader.setVec3("viewPos", camera.Position);
+    shader.setInt("levels", levels);
 
     // view/projection transformations
     glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
@@ -308,8 +400,8 @@ void renderOBJ(Framebuffer f, Shader shader)
 
     // render the loaded model
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
-    //model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.0, 1.0, 0.0));
+    model = glm::translate(model, objPos - glm::vec3(posMAX/2));
+    //model = glm::rotate(model, glm::radians(90.f), objRot);
     model = glm::scale(model, (glm::vec3(1.0f, 1.0f, 1.0f)*glm::vec3(s)));
     shader.setMat4("model", model);
     ourModel.Draw(shader);
@@ -380,7 +472,9 @@ void init()
     glEnable(GL_DEPTH_TEST);
 
     ourShader.loadShaders("model.vert", "model.frag");
-    goochShader.loadShaders("model.vert", "GoochShading.frag");
+    goochShader.loadShaders("model.vert", "goochShading.frag");
+    goochToonShader.loadShaders("model.vert", "toonShading.frag");
+    phongToonShader.loadShaders("model.vert", "phongToonShading.frag");
     drawColorShader.loadShaders("draw.vert", "draw.frag");
     drawEdgeShader.loadShaders("draw.vert", "drawEdge.frag");
  
@@ -451,46 +545,18 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
         camera.ProcessKeyboard(DOWN, deltaTime);
 
-    // Light Position
-    if (glfwGetKey(window, GLFW_KEY_U) == GLFW_PRESS)
-    {
-        lz += 0.1f;
-        lightPos = glm::vec3(lx, ly, lz);
-    }
-    if (glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS)
-    {
-        lz -= 0.1f;
-        lightPos = glm::vec3(lx, ly, lz);
-    }
-    if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS)
-    {
-        lx += 0.1f;
-        lightPos = glm::vec3(lx, ly, lz);
-    }
-    if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
-    {
-        lx -= 0.1f;
-        lightPos = glm::vec3(lx, ly, lz);
-    }
-    if (glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS)
-    {
-        ly += 0.1f;
-        lightPos = glm::vec3(lx, ly, lz);
-    }
-    if (glfwGetKey(window, GLFW_KEY_I) == GLFW_PRESS)
-    {
-        ly -= 0.1f;
-        lightPos = glm::vec3(lx, ly, lz);
-    }
-
-
     if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS)
         s -= 0.01f;
     if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS)
         s+= 0.01f;
 
     if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS)
-        saveImage(exportPath, window);
+    {
+        std::cout << drawing_step << std::endl;
+        if (drawing_step == 0) saveImage(colorPath, window);
+        if (drawing_step == 1) saveImage(exportPath, window);
+        if (drawing_step == 2)  saveImage(edgePath, window);
+    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

@@ -24,6 +24,9 @@
     <ClCompile Include="test.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="guidedfilter.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="model.vert">
@@ -68,6 +71,12 @@
     <None Include="GoochShading.frag">
       <Filter>소스 파일</Filter>
     </None>
+    <None Include="toonShading.frag">
+      <Filter>소스 파일</Filter>
+    </None>
+    <None Include="phongToonShading.frag">
+      <Filter>소스 파일</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\camera.h">
@@ -92,6 +101,9 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="export.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="guidedfilter.hpp">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>
