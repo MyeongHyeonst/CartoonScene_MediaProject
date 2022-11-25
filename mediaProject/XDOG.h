@@ -11,7 +11,7 @@
 #include "shader.h"
 #include "framebuffer.h"
 
-class XDOG
+class XDoG
 {
 public :
     int SCR_WIDTH, SCR_HEIGHT;

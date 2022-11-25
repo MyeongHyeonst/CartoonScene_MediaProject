@@ -13,9 +13,6 @@ uniform sampler2D texture_diffuse1;
 
 void main()
 {   
-    vec3 coolColor = objectColor +   texture(texture_diffuse1, TexCoords).rgb;
-    vec3 warmColor = lightColor +  texture(texture_diffuse1, TexCoords).rgb;
-
     vec3 norm = normalize(Normal);
     vec3 lightDir = normalize(lightPos - FragPos);
     vec3 viewDir = normalize(viewPos - FragPos);
@@ -38,7 +35,8 @@ void main()
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
     vec3 specular = specularStrength * spec * vec3(1, 1, 1);  
 
-    vec3 result =  (ambient + diffuse + specular) * (t*warmColor+(1-t)*coolColor);
+    vec3 light = ambient + diffuse + specular;
+    vec3 result =  (light * lightColor + (1-light) * objectColor) * texture(texture_diffuse1, TexCoords).rgb; //(t*warmColor+(1-t)*coolColor);
 
     FragColor = vec4(result, 1.0);
 }
