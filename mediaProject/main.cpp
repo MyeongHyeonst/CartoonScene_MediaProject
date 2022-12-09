@@ -61,7 +61,7 @@ void processInput(GLFWwindow* window);
 
 void renderUI();
 void renderOBJ(Framebuffer f, Shader shader);
-void drawWindow(Framebuffer colorB, Framebuffer edgeB, bool isEdge);
+void drawWindow(Framebuffer colorB, Framebuffer edgeB, bool isEdge, bool blend);
 
 void init();
 
@@ -91,15 +91,16 @@ int theta2 = 0;
 float lx = 1.2f, ly = 1.0f, lz = 2.0f;
 glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
 
-glm::vec3 objPos = glm::vec3(0, 0, 0);
-glm::vec3 objRot = glm::vec3(0, 0, 0);
+int posMAX = 20;
+glm::vec3 objPos = glm::vec3(posMAX/2, posMAX / 2, posMAX / 2);
+glm::vec3 objRot = glm::vec3(0, 1, 0);
 
 // nuklear setting
 struct nk_glfw glfw = { 0 };
 struct nk_context* ctx;
 struct nk_colorf bg;
 
-Shader ourShader, drawEdgeShader, drawColorShader, goochShader, goochToonShader, phongToonShader;
+Shader ourShader, drawEdgeShader, drawColorShader, goochShader, goochToonShader, phongToonShader, blendShader;
 Model ourModel;
 cv::Mat source;
 
@@ -108,12 +109,12 @@ GLuint vao, vbo, ebo;
 
 // XDOG parameter
 float sigma = 0.2f;
-float sigma_c = 0.7f;
-float sigma_m = 5.0f;
-float k = 1.4f;
-float p = 39.f;
-float ep = 0.6f;
-float phi = 0.016f;
+float sigma_c = 0.9f;
+float sigma_m = 7.5f;
+float k = 1.2f;
+float p = 20.8f;
+float ep = 0.66f;
+float phi = 0.02f;
 float etf = 7;
 XDoG xdog;
 GLFWwindow *window, *UI;
@@ -133,32 +134,26 @@ nk_colorf shadingcol = { 0, 0, 0.5, 1 }; // shading color
 
 enum { GOOCH, PHONG, GOOCHTOON, PHONGTOON };
 enum { ORIGINAL, XDOG, EDGE };
-int posMAX = 10;
+
 
 int main()
 { 
-    init();
-
-    // load models
-    //ourModel.Load("C:/model/backpack/backpack.obj");
-    ourModel.Load("C:/model/autumn_house/scene.gltf");
-    //ourModel.Load("C:/model/modern_bedroom/scene.gltf");
-    //ourModel.Load("C:/model/cafe-misti/scene.gltf");
-    //ourModel.Load("C:/model/cafe/scene.gltf");
-    //ourModel.Load("C:/model/cafe_soca/scene.gltf");
-    //ourModel.Load("C:/model/stanford-bunny.obj");
-    
-    
     // image
-   /* source = cv::imread("C:/model/image/seoul.jpg");
-    cv::resize(source, source, cv::Size(300, 300));
+    source = cv::imread("input/tower.jpg");
+
     source.convertTo(source, CV_32F, 1 / 255.f);
-    cv::Mat result = GuidedFilter(source, source, cv::Size(2,2), 0.1f);
-    cv::imshow("source", source);
-    cv::imshow("result", result);
-    cv::waitKey();*/
+    cv::Mat result = GuidedFilter(source, source, cv::Size(2, 2), 0.1f);
+    cvtColor(result, result, cv::COLOR_RGB2BGR);
+    flip(result, result, 0);
+
+    init();
+    int inputType = 1;
+    // load models
+    ourModel.Load("input/autumn_house/scene.gltf");
+
     // nuklear //
-     
+   
+
     glfwMakeContextCurrent(UI);
     ctx = nk_glfw3_init(&glfw, UI, NK_GLFW3_DEFAULT);
     // Font
@@ -175,30 +170,69 @@ int main()
         glfwMakeContextCurrent(window);
 
         processInput(window);
+        switch (inputType) {
+        case 0 : 
+            switch (shading_num)
+            {
+            case GOOCH:
+                renderOBJ(originalBuffer, goochShader);
+                break;
+            case PHONG:
+                renderOBJ(originalBuffer, ourShader);
+                break;
+            case GOOCHTOON:
+                renderOBJ(originalBuffer, goochToonShader);
+                break;
+            case PHONGTOON:
+                renderOBJ(originalBuffer, phongToonShader);
+                break;
+            }
 
-        switch (shading_num)
-        {
-        case GOOCH:
-            renderOBJ(originalBuffer, goochShader);
+            switch (drawing_step)
+            {
+            case ORIGINAL:
+                glDisable(GL_DEPTH_TEST);
+                drawWindow(originalBuffer, edgeBuffer, false, false);
+                break;
+            case XDOG:
+                xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
+                xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
+
+                xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 0);
+                xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 1);
+
+                xdog.calculateGM(gmBuffer, sobelBufferX, sobelBufferY);
+
+                xdog.calculateETF0(etf0Buffer, gmBuffer, sobelBufferX, sobelBufferY);
+                xdog.calculateETF(switchBuffer, etf0Buffer, gmBuffer, etf);
+
+                xdog.applyDOG(dogBuffer, etf0Buffer, originalBuffer, sigma_c, k, p);
+                xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
+
+                drawWindow(switchBuffer2, edgeBuffer, true, false);
+                break;
+            case EDGE:
+                xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
+                xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
+
+                xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 0);
+                xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 1);
+
+                xdog.calculateGM(gmBuffer, sobelBufferX, sobelBufferY);
+
+                xdog.calculateETF0(etf0Buffer, gmBuffer, sobelBufferX, sobelBufferY);
+                xdog.calculateETF(switchBuffer, etf0Buffer, gmBuffer, etf);
+
+                xdog.applyDOG(dogBuffer, etf0Buffer, originalBuffer, sigma_c, k, p);
+                xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
+
+                drawWindow(edgeBuffer, edgeBuffer, false, false);
+            }
             break;
-        case PHONG:
-            renderOBJ(originalBuffer, ourShader);
-            break;
-        case GOOCHTOON:
-            renderOBJ(originalBuffer, goochToonShader);
-            break;
-        case PHONGTOON:
-            renderOBJ(originalBuffer, phongToonShader);
-            break;
-        }
-        
-        switch (drawing_step)
-        {
-        case ORIGINAL:
+        case 1:
+            originalBuffer.setHDR(result);
             glDisable(GL_DEPTH_TEST);
-            drawWindow(originalBuffer, edgeBuffer, false);
-            break;
-        case XDOG:
+
             xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
             xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
 
@@ -213,24 +247,8 @@ int main()
             xdog.applyDOG(dogBuffer, etf0Buffer, originalBuffer, sigma_c, k, p);
             xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
 
-            drawWindow(switchBuffer2, edgeBuffer, true);
+            drawWindow(originalBuffer, edgeBuffer, true, false);
             break;
-        case EDGE : 
-            xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 0, sigma);
-            xdog.applyGaussian(switchBuffer, switchBuffer2, originalBuffer, 1, sigma);
-
-            xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 0);
-            xdog.applySobel(sobelBufferX, sobelBufferY, switchBuffer2, 1);
-
-            xdog.calculateGM(gmBuffer, sobelBufferX, sobelBufferY);
-
-            xdog.calculateETF0(etf0Buffer, gmBuffer, sobelBufferX, sobelBufferY);
-            xdog.calculateETF(switchBuffer, etf0Buffer, gmBuffer, etf);
-
-            xdog.applyDOG(dogBuffer, etf0Buffer, originalBuffer, sigma_c, k, p);
-            xdog.applyXDOG(edgeBuffer, etf0Buffer, dogBuffer, sigma_m, ep, phi);
-
-            drawWindow(edgeBuffer, edgeBuffer, false);
         }
 
         glfwSwapBuffers(window);
@@ -310,10 +328,10 @@ void renderUI()
 
         nk_layout_row(ctx, NK_STATIC, 15, 2, ratio);
         nk_labelf(ctx, NK_TEXT_LEFT, "light r = %.1f", r);
-        nk_slider_float(ctx, 0, &r, 10, 0.1f);
+        nk_slider_float(ctx, 0, &r, 20, 0.1f);
         nk_labelf(ctx, NK_TEXT_LEFT, "light theta = %d", theta);
         nk_slider_int(ctx, 0, &theta, 360, 5);
-        nk_labelf(ctx, NK_TEXT_LEFT, "light theta2 = %d", theta);
+        nk_labelf(ctx, NK_TEXT_LEFT, "light theta2 = %d", theta2);
         nk_slider_int(ctx, 0, &theta2, 360, 5);
         nk_layout_row(ctx, NK_STATIC, 15, 1, ratio2);
         nk_labelf(ctx, NK_TEXT_LEFT, "light Position (%.1f, %.1f, %.1f)", lightPos.x, lightPos.y, lightPos.z);
@@ -401,21 +419,36 @@ void renderOBJ(Framebuffer f, Shader shader)
     // render the loaded model
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, objPos - glm::vec3(posMAX/2));
-    //model = glm::rotate(model, glm::radians(90.f), objRot);
+    model = glm::rotate(model, glm::radians(90.f), objRot);
     model = glm::scale(model, (glm::vec3(1.0f, 1.0f, 1.0f)*glm::vec3(s)));
     shader.setMat4("model", model);
     ourModel.Draw(shader);
 }
-void drawWindow(Framebuffer colorB, Framebuffer edgeB, bool isEdge)
+void drawWindow(Framebuffer colorB, Framebuffer edgeB, bool isEdge, bool blend)
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     
     glClearColor(0.5f, 1.0f, 0.5f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    drawColorShader.use();
-    glBindVertexArray(vao);
-    colorB.bind();
+    if (!blend)
+    {
+        drawColorShader.use();
+        glBindVertexArray(vao);
+        colorB.bind();
+    }
+    else
+    {
+        blendShader.use();
+
+        glActiveTexture(GL_TEXTURE0 + 1);
+        colorB.bind();
+        blendShader.setInt("color", 1);
+
+        glActiveTexture(GL_TEXTURE0);
+        edgeB.bind();
+        blendShader.setInt("edge", 0);
+    }
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
@@ -430,6 +463,7 @@ void drawWindow(Framebuffer colorB, Framebuffer edgeB, bool isEdge)
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     }
+    
 }
 void init()
 {
@@ -441,6 +475,7 @@ void init()
 
     // glfw window creation
     window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Viewer", NULL, NULL);
+    std::cout << SCR_WIDTH << " " << SCR_HEIGHT;
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -477,6 +512,7 @@ void init()
     phongToonShader.loadShaders("model.vert", "phongToonShading.frag");
     drawColorShader.loadShaders("draw.vert", "draw.frag");
     drawEdgeShader.loadShaders("draw.vert", "drawEdge.frag");
+    blendShader.loadShaders("draw.vert", "blend.frag");
  
     float vertices[] = {
         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,   // top right

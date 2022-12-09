@@ -26,6 +26,17 @@ public:
 			cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
+	void generateBufferwithHDR(int width, int height)
+	{
+		glGenFramebuffers(1, &fbo);
+		this->bindBuffer();
+		this->setNULLHDR(width, height);
+		this->attach();
+
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
 	void generateBufferwithDepth(int width, int height)
 	{
 		glGenFramebuffers(1, &fbo);
