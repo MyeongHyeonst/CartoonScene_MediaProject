@@ -77,6 +77,9 @@
     <None Include="phongToonShading.frag">
       <Filter>소스 파일</Filter>
     </None>
+    <None Include="blend.frag">
+      <Filter>소스 파일</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\camera.h">

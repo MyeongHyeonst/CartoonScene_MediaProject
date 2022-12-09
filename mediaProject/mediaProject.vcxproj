@@ -151,6 +151,7 @@
     <ClCompile Include="test.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="blend.frag" />
     <None Include="DoG.frag" />
     <None Include="draw.frag" />
     <None Include="draw.vert" />
